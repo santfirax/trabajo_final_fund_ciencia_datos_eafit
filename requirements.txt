@@ -1,0 +1,13 @@
+# Core libraries
+streamlit==1.31.0
+pandas==2.2.0
+numpy==1.26.3
+
+# Data visualization
+matplotlib==3.8.2
+seaborn==0.13.1
+plotly==5.18.0
+
+# Additional utilities
+scipy==1.12.0
+openpyxl==3.1.2
