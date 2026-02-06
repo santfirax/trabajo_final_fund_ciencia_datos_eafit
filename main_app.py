@@ -6,15 +6,47 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import json
 from datetime import datetime
-import requests
-from io import StringIO
 
 # Configuración de la página
 st.set_page_config(
     page_title="Análisis de Datos - ETL y EDA",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# Función para cargar datos con caché y optimizaciones
+@st.cache_data(show_spinner="Cargando datos...")
+def load_csv_data(file_bytes, filename):
+    """Carga archivo CSV con optimizaciones para archivos grandes"""
+    try:
+        # Intentar cargar con configuración optimizada
+        df = pd.read_csv(
+            file_bytes,
+            low_memory=False,
+            encoding='utf-8'
+        )
+        return df, None
+    except UnicodeDecodeError:
+        # Intentar con otra codificación si falla
+        file_bytes.seek(0)
+        df = pd.read_csv(
+            file_bytes,
+            low_memory=False,
+            encoding='latin-1'
+        )
+        return df, "Archivo cargado con codificación latin-1"
+    except Exception as e:
+        return None, f"Error al cargar archivo: {str(e)}"
+
+@st.cache_data(show_spinner="Cargando datos JSON...")
+def load_json_data(file_bytes):
+    """Carga archivo JSON con optimizaciones"""
+    try:
+        df = pd.read_json(file_bytes)
+        return df, None
+    except Exception as e:
+        return None, f"Error al cargar JSON: {str(e)}"
 
 # Título principal
 st.title("📊 Aplicación de Análisis de Datos")
@@ -32,37 +64,47 @@ st.subheader("📂 Carga de Datos")
 # Selector de fuente de datos
 data_source = st.radio(
     "Selecciona la fuente de datos:",
-    ["Archivo CSV", "Archivo JSON", "URL"]
+    ["Archivo CSV", "Archivo JSON"]
 )
 
 df = None
+error_msg = None
 
 if data_source == "Archivo CSV":
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=['csv'])
     if uploaded_file is not None:
-        df = pd.read_csv(uploaded_file)
-        st.success(f"✅ Archivo cargado: {df.shape[0]} filas x {df.shape[1]} columnas")
+        # Mostrar tamaño del archivo
+        file_size_mb = uploaded_file.size / (1024 * 1024)
+        st.info(f"📦 Tamaño del archivo: {file_size_mb:.2f} MB")
+
+        if file_size_mb > 500:
+            st.warning("⚠️ Archivo muy grande (>500MB). La carga puede tardar varios minutos.")
+
+        df, error_msg = load_csv_data(uploaded_file, uploaded_file.name)
+
+        if df is not None:
+            st.success(f"✅ Archivo cargado: {df.shape[0]:,} filas x {df.shape[1]} columnas")
+            if error_msg:
+                st.info(error_msg)
+        else:
+            st.error(f"❌ {error_msg}")
 
 elif data_source == "Archivo JSON":
     uploaded_file = st.file_uploader("Sube tu archivo JSON", type=['json'])
     if uploaded_file is not None:
-        df = pd.read_json(uploaded_file)
-        st.success(f"✅ Archivo cargado: {df.shape[0]} filas x {df.shape[1]} columnas")
+        # Mostrar tamaño del archivo
+        file_size_mb = uploaded_file.size / (1024 * 1024)
+        st.info(f"📦 Tamaño del archivo: {file_size_mb:.2f} MB")
 
-elif data_source == "URL":
-    url = st.text_input("Ingresa la URL del archivo CSV:")
-    if url:
-        try:
-            if url.endswith('.csv'):
-                df = pd.read_csv(url)
-            elif url.endswith('.json'):
-                df = pd.read_json(url)
-            else:
-                response = requests.get(url)
-                df = pd.read_csv(StringIO(response.text))
-            st.success(f"✅ Datos cargados desde URL: {df.shape[0]} filas x {df.shape[1]} columnas")
-        except Exception as e:
-            st.error(f"❌ Error al cargar datos desde URL: {str(e)}")
+        if file_size_mb > 500:
+            st.warning("⚠️ Archivo muy grande (>500MB). La carga puede tardar varios minutos.")
+
+        df, error_msg = load_json_data(uploaded_file)
+
+        if df is not None:
+            st.success(f"✅ Archivo cargado: {df.shape[0]:,} filas x {df.shape[1]} columnas")
+        else:
+            st.error(f"❌ {error_msg}")
 
 # Si hay datos cargados, proceder con limpieza y procesamiento
 if df is not None:
@@ -376,8 +418,7 @@ if df is not None:
                     df_filtrado,
                     x=x_var,
                     y=y_var,
-                    title=f"{y_var} vs {x_var}",
-                    trendline="ols"
+                    title=f"{y_var} vs {x_var}"
                 )
             else:
                 fig_scatter = px.scatter(
